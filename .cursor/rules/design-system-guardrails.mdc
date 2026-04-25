@@ -1,0 +1,12 @@
+---
+description: Enforce existing design system and protect global styles
+alwaysApply: true
+---
+
+# Design System Guardrails
+
+- For any UI/design task, strictly follow the existing design system already in this repository.
+- Reuse existing components, tokens, spacing, typography, and interaction patterns before introducing anything new.
+- Keep visual and behavioral consistency with the current system; do not invent a parallel style language.
+- Do not edit `app/globals.css`.
+- If styling changes are needed, implement them with component-level patterns that align with the established system instead of changing global CSS.
