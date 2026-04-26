@@ -8,6 +8,15 @@ const size = {
 const title = "Healthcare Desert Intelligence";
 const subtitle =
   "Graph RAG operations center for specialty gap detection, map-led response, and auditable health evidence exports.";
+const palette = {
+  background: "#2f3131",
+  card: "#313434",
+  border: "#505353",
+  primary: "#d4905f",
+  text: "#f2efe8",
+  muted: "#cbc6b7",
+  accent: "#3a3d3d",
+} as const;
 
 export async function GET() {
   return new ImageResponse(
@@ -20,8 +29,8 @@ export async function GET() {
         padding: "58px",
         overflow: "hidden",
         background:
-          "radial-gradient(circle at 84% 4%, #2d4f5f 0%, rgba(45,79,95,0) 38%), radial-gradient(circle at 14% 92%, #4f6f5a 0%, rgba(79,111,90,0) 36%), linear-gradient(130deg, #0b1117 0%, #101923 54%, #0e151f 100%)",
-        color: "#e8eef5",
+          "radial-gradient(circle at 88% 8%, rgba(212,144,95,0.22) 0%, rgba(212,144,95,0) 42%), radial-gradient(circle at 12% 92%, rgba(110,120,118,0.32) 0%, rgba(110,120,118,0) 44%), linear-gradient(145deg, #282b2b 0%, #2f3131 55%, #2a2c2c 100%)",
+        color: palette.text,
         fontFamily:
           "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial",
       }}
@@ -32,9 +41,9 @@ export async function GET() {
           inset: "0",
           display: "flex",
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.09) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.09) 1px, transparent 1px)",
+            "linear-gradient(rgba(242,239,232,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(242,239,232,0.06) 1px, transparent 1px)",
           backgroundSize: "40px 40px",
-          opacity: 0.12,
+          opacity: 0.18,
         }}
       />
       <div
@@ -42,8 +51,9 @@ export async function GET() {
           position: "absolute",
           inset: "0",
           display: "flex",
-          border: "1px solid rgba(255,255,255,0.12)",
-          boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.5)",
+          border: `1px solid ${palette.border}`,
+          boxShadow:
+            "inset 0 0 0 1px rgba(0,0,0,0.35), inset 0 -80px 120px rgba(0,0,0,0.18)",
         }}
       />
 
@@ -70,16 +80,16 @@ export async function GET() {
               width: "14px",
               height: "14px",
               borderRadius: "999px",
-              background: "#8ff0b8",
-              boxShadow: "0 0 22px rgba(143,240,184,0.8)",
+              background: palette.primary,
+              boxShadow: "0 0 18px rgba(212,144,95,0.65)",
             }}
           />
           <div
             style={{
               display: "flex",
               padding: "10px 14px",
-              border: "1px solid rgba(255,255,255,0.2)",
-              background: "rgba(7,12,17,0.58)",
+              border: `1px solid ${palette.border}`,
+              background: "rgba(45,47,47,0.78)",
               letterSpacing: "0.11em",
               fontSize: "20px",
               fontWeight: 600,
@@ -114,7 +124,7 @@ export async function GET() {
               display: "flex",
               fontSize: "31px",
               lineHeight: 1.32,
-              color: "rgba(232,238,245,0.8)",
+              color: palette.muted,
             }}
           >
             {subtitle}
@@ -139,7 +149,7 @@ export async function GET() {
             <div
               style={{
                 fontSize: "21px",
-                color: "rgba(232,238,245,0.76)",
+                color: palette.muted,
                 textTransform: "uppercase",
                 letterSpacing: "0.09em",
               }}
@@ -162,9 +172,9 @@ export async function GET() {
               alignItems: "center",
               gap: "12px",
               padding: "10px 16px",
-              border: "1px solid rgba(143,240,184,0.34)",
-              background: "rgba(3,8,8,0.5)",
-              color: "#8ff0b8",
+              border: `1px solid ${palette.border}`,
+              background: palette.accent,
+              color: palette.primary,
               fontSize: "20px",
               letterSpacing: "0.08em",
               textTransform: "uppercase",

@@ -58,12 +58,21 @@ export const metadata: Metadata = {
     title: "Serving a Nation | Healthcare Desert Intelligence",
     description:
       "Identify healthcare specialty deserts across India with Graph RAG intelligence, facility mapping, and evidence-grade reporting.",
+    images: [
+      {
+        url: "/api/og",
+        width: 1200,
+        height: 630,
+        alt: "Serving a Nation healthcare intelligence preview",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Serving a Nation | Healthcare Desert Intelligence",
     description:
       "Graph RAG intelligence for India healthcare specialty deserts, facility mapping, and auditable evidence exports.",
+    images: ["/api/og"],
   },
   robots: {
     index: true,
