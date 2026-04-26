@@ -2,7 +2,6 @@ import {
   ArrowRightIcon,
   FileTextIcon,
   MapPinAreaIcon,
-  PlugsConnectedIcon,
   TerminalWindowIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import { cacheLife, cacheTag } from "next/cache";

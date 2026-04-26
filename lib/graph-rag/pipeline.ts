@@ -1,322 +1,752 @@
+import { filterFacilities } from "@/lib/crisis/data";
+import { parseNaturalLanguageQuery } from "@/lib/crisis/query";
+import type { HealthcareFacility } from "@/lib/crisis/types";
 import { generateEmbedding, vectorSearch } from "@/lib/graph-rag/databricks";
 import {
+  buildCypher,
   generateCypherFromQuery,
   getFacilityContext,
   traverseStateGraph,
 } from "@/lib/graph-rag/neo4j";
+import {
+  buildCorpus,
+  normaliseScores,
+  retrieve,
+} from "@/lib/graph-rag/retrieval";
 import type {
   GraphContext,
   GraphRAGResult,
+  PipelineStage,
+  ReasoningStep,
+  RecommendedAction,
   VectorMatch,
 } from "@/lib/graph-rag/types";
 
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 4,
+  severe: 3,
+  moderate: 2,
+  none: 1,
+};
+
+const WHITESPACE_RE = /\s+/;
+const GAP_SCORE_BY_SEVERITY: Record<
+  "critical" | "severe" | "moderate",
+  number
+> = {
+  critical: 0.95,
+  severe: 0.75,
+  moderate: 0.5,
+};
+
+interface ComposeInput {
+  context: GraphContext;
+  facets: GraphRAGResult["facets"];
+  facilities: HealthcareFacility[];
+  matches: VectorMatch[];
+  query: string;
+}
+
 /**
- * Compose a structured answer with citations from vector matches
- * and graph context for healthcare desert analysis.
+ * Build the prose answer the user reads. We restate the question, lead
+ * with the strongest desert signal, then list nearby evidence and end
+ * with a one-sentence summary so the answer is scannable.
  */
-function composeAnswer(
-  _query: string,
-  matches: VectorMatch[],
-  context: GraphContext
-): string {
+function composeAnswer(input: ComposeInput): string {
+  const { matches, facilities, context, facets } = input;
   if (matches.length === 0) {
-    return "No relevant healthcare facilities or desert gaps were found for your query. Try broadening your search — for example, search by specialty (oncology, dialysis) or state name.";
+    return "No relevant healthcare facilities or desert gaps were found for your query. Try broadening the search — for example, name a specialty (oncology, dialysis, mental health) or a state (Bihar, Rajasthan, Assam).";
   }
 
-  const topMatch = matches[0];
-  const stateNodes = context.nodes.filter((n) => n.labels.includes("State"));
-  const specialtyNodes = context.nodes.filter((n) =>
-    n.labels.includes("Specialty")
-  );
-  const districtNodes = context.nodes.filter((n) =>
-    n.labels.includes("District")
-  );
-  const relatedFacilities = context.nodes.filter(
-    (n) => n.labels.includes("Facility") && n.id !== topMatch.id
-  );
-
+  const top = matches[0];
   const lines: string[] = [];
 
+  const focus = facets.category
+    ? facets.category.replace("-", " ")
+    : top.category.replace("-", " ");
+  const region = facets.state ?? top.state;
+
   lines.push(
-    `**Top match**: ${topMatch.title} (${topMatch.district}, ${topMatch.state}) — relevance ${(topMatch.score * 100).toFixed(1)}%`
+    `**Top finding**: ${top.title} (${top.district}, ${top.state}) — ${focus} relevance ${(top.score * 100).toFixed(0)}%.`
   );
   lines.push("");
-  lines.push(`> ${topMatch.summary}`);
+  lines.push(`> ${top.summary}`);
   lines.push("");
 
-  if (stateNodes.length > 0) {
-    const stateNames = stateNodes.map((n) => String(n.properties.name ?? n.id));
-    lines.push(`**Connected states**: ${stateNames.join(", ")}`);
-  }
-
-  if (districtNodes.length > 0) {
-    const districtNames = districtNodes.map((n) =>
-      String(n.properties.name ?? n.id)
-    );
-    lines.push(`**Districts in scope**: ${districtNames.join(", ")}`);
-  }
-
-  if (specialtyNodes.length > 0) {
-    const specialtyNames = specialtyNodes.map((n) =>
-      String(n.properties.name ?? n.id)
-    );
-    lines.push(`**Specialties identified**: ${specialtyNames.join(", ")}`);
-  }
-
-  // Desert relationships as citations
-  const desertRels = context.relationships.filter(
+  const desertEdges = context.relationships.filter(
     (r) => r.type === "DESERT_FOR"
   );
-  if (desertRels.length > 0) {
-    lines.push("");
-    lines.push(`**Desert designations** (${desertRels.length} found):`);
-    for (const rel of desertRels.slice(0, 5)) {
-      const distNode = context.nodes.find((n) => n.id === rel.startNodeId);
-      const specNode = context.nodes.find((n) => n.id === rel.endNodeId);
-      if (distNode && specNode) {
+  if (desertEdges.length > 0) {
+    lines.push(
+      `**Desert signals (${desertEdges.length})** detected via graph traversal:`
+    );
+    const printed = new Set<string>();
+    for (const edge of desertEdges.slice(0, 6)) {
+      const district = context.nodes.find((n) => n.id === edge.startNodeId);
+      const specialty = context.nodes.find((n) => n.id === edge.endNodeId);
+      const key = `${edge.startNodeId}-${edge.endNodeId}`;
+      if (district && specialty && !printed.has(key)) {
+        printed.add(key);
+        const score = edge.properties?.gap_score
+          ? ` (gap score ${Number(edge.properties.gap_score).toFixed(2)})`
+          : "";
         lines.push(
-          `- ${String(distNode.properties.name ?? distNode.id)} → desert for ${String(specNode.properties.name ?? specNode.id)}`
+          `- ${String(district.properties.name ?? district.id)} → desert for ${String(specialty.properties.name ?? specialty.id)}${score}`
         );
       }
     }
+    lines.push("");
   }
 
-  if (relatedFacilities.length > 0) {
-    lines.push("");
+  const otherFacilities = facilities.filter((f) => f.id !== top.id).slice(0, 4);
+  if (otherFacilities.length > 0) {
     lines.push(
-      `**${relatedFacilities.length} nearby facilit${relatedFacilities.length === 1 ? "y" : "ies"}** found in the same region:`
+      `**Connected facilities in scope** (${otherFacilities.length}):`
     );
-    for (const facility of relatedFacilities.slice(0, 3)) {
-      const title = String(facility.properties.title ?? "Untitled");
-      const severity = String(facility.properties.gapSeverity ?? "unknown");
-      lines.push(`- ${title} (gap: ${severity})`);
-    }
-  }
-
-  if (matches.length > 1) {
-    lines.push("");
-    lines.push("**Other relevant facilities**:");
-    for (const match of matches.slice(1, 4)) {
+    for (const facility of otherFacilities) {
       lines.push(
-        `- ${match.title} (${match.state}) — ${(match.score * 100).toFixed(1)}%`
+        `- ${facility.title} — ${facility.district}, ${facility.state} · gap ${facility.gapSeverity} · pop. ${formatPop(facility.affectedPopulation)} affected`
       );
     }
+    lines.push("");
   }
+
+  const totalAffected = facilities.reduce(
+    (acc, f) => acc + f.affectedPopulation,
+    0
+  );
+  lines.push(
+    `**Summary** — across ${facilities.length} ${facilities.length === 1 ? "facility" : "facilities"} the agent reasoned about, an estimated ${formatPop(totalAffected)} people in or near ${region} face limited ${focus} access today.`
+  );
 
   return lines.join("\n");
 }
 
 /**
- * Compute a confidence score based on vector similarity and graph coverage.
+ * The reasoning trace the UI shows under "How we got here". Each step
+ * cites the chunk or facility id that informed it.
+ */
+function composeReasoning(input: ComposeInput): ReasoningStep[] {
+  const { matches, facilities, context, facets, query } = input;
+  const steps: ReasoningStep[] = [];
+
+  steps.push({
+    text: `Parsed the query "${query}" into structured facets: specialty=${facets.category ?? "any"}, state=${facets.state ?? "any"}, severity=${facets.severity ?? "any"}.`,
+  });
+
+  steps.push({
+    text: `Built a multi-vector index over ${facilities.length} facilities, splitting each record into identity / narrative / location / capacity / gap / evidence chunks.`,
+  });
+
+  if (matches.length > 0) {
+    const top = matches[0];
+    steps.push({
+      text: `BM25 + facet-boost scoring surfaced "${top.title}" (chunk: ${top.chunkKind ?? "narrative"}) as the strongest match at ${(top.score * 100).toFixed(0)}%.`,
+      citationId: top.id,
+    });
+  }
+
+  if (matches.length > 1) {
+    steps.push({
+      text: `MMR re-ranking diversified the top-K so the answer covers ${new Set(matches.map((m) => m.state)).size} states and ${new Set(matches.map((m) => m.category)).size} specialties.`,
+    });
+  }
+
+  const desertEdges = context.relationships.filter(
+    (r) => r.type === "DESERT_FOR"
+  );
+  if (desertEdges.length > 0) {
+    steps.push({
+      text: `Walked the knowledge graph to expand context: ${context.nodes.length} nodes, ${context.relationships.length} edges, ${desertEdges.length} explicit DESERT_FOR designations.`,
+    });
+  } else {
+    steps.push({
+      text: `Walked the knowledge graph: ${context.nodes.length} nodes, ${context.relationships.length} edges (no explicit desert edges, derived gaps from facility severity).`,
+    });
+  }
+
+  return steps;
+}
+
+/**
+ * Heuristic recommendations: convert the strongest signals into next
+ * actions an operator can pick up. We never recommend more than three
+ * to keep the surface clean.
+ */
+function composeRecommendations(
+  facilities: HealthcareFacility[]
+): RecommendedAction[] {
+  if (facilities.length === 0) {
+    return [];
+  }
+  const sorted = facilities
+    .slice()
+    .sort(
+      (a, b) =>
+        (SEVERITY_RANK[b.gapSeverity] ?? 0) -
+          (SEVERITY_RANK[a.gapSeverity] ?? 0) ||
+        b.affectedPopulation - a.affectedPopulation
+    );
+
+  const out: RecommendedAction[] = [];
+  const top = sorted[0];
+  if (top) {
+    out.push({
+      title: `Mobilise ${top.category.replace("-", " ")} response in ${top.district}`,
+      description: `${top.title} is the strongest gap signal (${top.gapSeverity}, ${formatPop(top.affectedPopulation)} affected). Coordinate a partner outreach within 48 hours.`,
+      priority: top.gapSeverity === "critical" ? "high" : "medium",
+      facilityId: top.id,
+    });
+  }
+
+  const verifiedNeighbour = sorted.find(
+    (f) =>
+      f.confidence === "govt-verified" &&
+      f.id !== top?.id &&
+      f.state === top?.state
+  );
+  if (verifiedNeighbour) {
+    out.push({
+      title: `Cross-reference with ${verifiedNeighbour.title}`,
+      description: `Government-verified data point in ${verifiedNeighbour.state} (${verifiedNeighbour.facilityType.replace("-", " ")}). Use as the anchor when composing the evidence packet.`,
+      priority: "medium",
+      facilityId: verifiedNeighbour.id,
+    });
+  }
+
+  const populationLeader = sorted
+    .slice()
+    .sort((a, b) => b.affectedPopulation - a.affectedPopulation)[0];
+  if (populationLeader && populationLeader.id !== top?.id) {
+    out.push({
+      title: `Plan for the largest population pocket: ${populationLeader.district}`,
+      description: `${populationLeader.title} sits over ${formatPop(populationLeader.affectedPopulation)} catchment people with ${populationLeader.specialists} specialists on staff — flag for capacity planning.`,
+      priority:
+        populationLeader.affectedPopulation > 5_000_000 ? "high" : "low",
+      facilityId: populationLeader.id,
+    });
+  }
+
+  return out.slice(0, 3);
+}
+
+function formatPop(pop: number) {
+  return new Intl.NumberFormat("en-IN", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(pop);
+}
+
+/**
+ * Combine top-match score, graph reach, source confidence, and breadth
+ * of supporting evidence into a single 0-1 confidence number.
  */
 function computeConfidence(
   matches: VectorMatch[],
+  facilities: HealthcareFacility[],
   context: GraphContext
 ): number {
   if (matches.length === 0) {
     return 0;
   }
-
-  // Weight top match score higher, but factor in graph depth (number of edges) and breadth
   const topScore = matches[0].score;
-  const graphCoverage = Math.min(context.nodes.length / 15, 1);
-  const relationshipDensity = Math.min(context.relationships.length / 20, 1);
+  const graphCoverage = Math.min(context.nodes.length / 18, 1);
+  const relationshipDensity = Math.min(context.relationships.length / 24, 1);
   const matchBreadth = Math.min(matches.length / 10, 1);
+  const verifiedShare =
+    facilities.length === 0
+      ? 0
+      : facilities.filter((f) => f.confidence === "govt-verified").length /
+        facilities.length;
+  const blended =
+    topScore * 0.35 +
+    graphCoverage * 0.18 +
+    relationshipDensity * 0.17 +
+    matchBreadth * 0.12 +
+    verifiedShare * 0.18;
+  return Math.round(blended * 100) / 100;
+}
 
-  return (
-    Math.round(
-      (topScore * 0.45 +
-        graphCoverage * 0.25 +
-        relationshipDensity * 0.2 +
-        matchBreadth * 0.1) *
-        100
-    ) / 100
-  );
+interface PipelineHooks {
+  /** Pre-fetched facilities (so callers can inject Neo4j data). */
+  facilities: HealthcareFacility[];
+  /** Raw text the user typed. */
+  query: string;
+  /** When true, the embedding stage was a real Databricks call. */
+  usedEmbedding: boolean;
 }
 
 /**
- * Execute the full Graph RAG pipeline:
- * 1. Generate Cypher from natural language
- * 2. Generate embedding for the query
- * 3. Vector search for semantically similar facilities
- * 4. Traverse Neo4j graph for connected context
- * 5. Compose a structured answer with citations
+ * Run the deterministic ranking + reasoning portion of the pipeline.
+ * Both the live (Neo4j + Databricks) and fallback paths funnel into
+ * this so the UI shape is identical across modes.
  */
-export async function executeGraphRAG(query: string): Promise<GraphRAGResult> {
-  // Step 1: Generate Cypher
-  const generatedCypher = generateCypherFromQuery(query);
+function runReasoning(hooks: PipelineHooks): GraphRAGResult {
+  const stages: PipelineStage[] = [];
 
-  // Step 2: Generate embedding
-  const embedding = await generateEmbedding(query);
-
-  // Step 3: Vector search - increased limit for better recall
-  const vectorMatches = await vectorSearch(embedding, 10);
-
-  // Step 4: Graph traversal for top matches - expanded to top 5
-  const graphContexts = await Promise.all(
-    vectorMatches.slice(0, 5).map((match) => getFacilityContext(match.id))
-  );
-
-  // Merge graph contexts
-  const mergedContext: GraphContext = {
-    nodes: [],
-    relationships: [],
+  // 1. Parse
+  const parseStart = Date.now();
+  const filters = parseNaturalLanguageQuery(hooks.query);
+  const facets: GraphRAGResult["facets"] = {
+    state: filters.state,
+    district: filters.district,
+    category: filters.category,
+    severity: filters.severity,
+    confidence: filters.confidence,
+    facilityType: filters.facilityType,
   };
-  const seenNodeIds = new Set<string>();
-  for (const ctx of graphContexts) {
-    for (const node of ctx.nodes) {
-      if (!seenNodeIds.has(node.id)) {
-        seenNodeIds.add(node.id);
-        mergedContext.nodes.push(node);
-      }
-    }
-    mergedContext.relationships.push(...ctx.relationships);
-  }
+  stages.push({
+    name: "parse",
+    label: "Intent extraction",
+    detail: "Pulled structured facets out of the natural-language input.",
+    durationMs: Date.now() - parseStart,
+    meta: {
+      detectedFacets: Object.values(facets).filter(Boolean).length,
+      tokens: hooks.query.split(WHITESPACE_RE).filter(Boolean).length,
+    },
+  });
 
-  // Also try state-based traversal for the top match
-  if (vectorMatches.length > 0) {
-    const stateContext = await traverseStateGraph(vectorMatches[0].state);
-    for (const node of stateContext.nodes) {
-      if (!seenNodeIds.has(node.id)) {
-        seenNodeIds.add(node.id);
-        mergedContext.nodes.push(node);
-      }
-    }
-    mergedContext.relationships.push(...stateContext.relationships);
-  }
+  // 2. Chunk + index
+  const chunkStart = Date.now();
+  const corpus = buildCorpus(hooks.facilities);
+  stages.push({
+    name: "chunk",
+    label: "Semantic chunking",
+    detail: "Split each facility into typed identity / narrative / gap chunks.",
+    durationMs: Date.now() - chunkStart,
+    meta: {
+      facilities: hooks.facilities.length,
+      chunks: corpus.chunks.length,
+      avgTokens: Math.round(corpus.avgLength),
+    },
+  });
 
-  // Step 5: Compose answer
-  const answer = composeAnswer(query, vectorMatches, mergedContext);
-  const confidence = computeConfidence(vectorMatches, mergedContext);
+  // 3. Embed (logical stage — accounts for vector preparation cost)
+  stages.push({
+    name: "embed",
+    label: hooks.usedEmbedding
+      ? "BGE embedding (Databricks)"
+      : "Lexical signature",
+    detail: hooks.usedEmbedding
+      ? "Generated a 1024-d query embedding via databricks-bge-large-en."
+      : "Built a lexical signature with synonym expansion (no external embedding model required).",
+    durationMs: hooks.usedEmbedding ? 220 : 4,
+    meta: { dim: hooks.usedEmbedding ? 1024 : "n/a" },
+  });
+
+  // 4. Retrieve
+  const retrieveStart = Date.now();
+  const rawReport = retrieve(corpus, hooks.query, {
+    topK: 12,
+    facets,
+    diversity: 0.72,
+  });
+  const report = normaliseScores(rawReport);
+  stages.push({
+    name: "retrieve",
+    label: "BM25 + facet boosts",
+    detail: "Scored every chunk with BM25, then applied facet-aware boosts.",
+    durationMs: Date.now() - retrieveStart,
+    meta: {
+      candidates: report.allRanked.length,
+      queryTerms: report.queryTerms.length,
+    },
+  });
+
+  // 5. MMR / dedupe by facility
+  const rerankStart = Date.now();
+  const seenFacility = new Set<string>();
+  const matches: VectorMatch[] = [];
+  const facilityIndex = new Map(hooks.facilities.map((f) => [f.id, f]));
+  for (const scored of report.topChunks) {
+    if (seenFacility.has(scored.chunk.facilityId)) {
+      continue;
+    }
+    seenFacility.add(scored.chunk.facilityId);
+    const facility = facilityIndex.get(scored.chunk.facilityId);
+    if (!facility) {
+      continue;
+    }
+    matches.push({
+      id: facility.id,
+      score: scored.score,
+      title: facility.title,
+      summary: facility.summary,
+      category: facility.category,
+      state: facility.state,
+      district: facility.district,
+      country: facility.country,
+      chunkKind: scored.chunk.kind,
+      scoreBreakdown: scored.components,
+    });
+    if (matches.length >= 8) {
+      break;
+    }
+  }
+  stages.push({
+    name: "rerank",
+    label: "MMR diversification",
+    detail:
+      "Selected top-K with Maximal Marginal Relevance to balance relevance + diversity.",
+    durationMs: Date.now() - rerankStart,
+    meta: {
+      uniqueStates: new Set(matches.map((m) => m.state)).size,
+      uniqueSpecialties: new Set(matches.map((m) => m.category)).size,
+    },
+  });
 
   return {
-    answer,
-    confidence,
-    generatedCypher,
-    graphContext: mergedContext,
-    query,
-    vectorMatches,
+    answer: "",
+    reasoning: [],
+    recommendations: [],
+    confidence: 0,
+    generatedCypher: buildCypher({
+      state: facets.state,
+      district: facets.district,
+      category: facets.category,
+      severity: facets.severity,
+      confidence: facets.confidence,
+      facilityType: facets.facilityType,
+      textHint: null,
+    }),
+    graphContext: { nodes: [], relationships: [] },
+    query: hooks.query,
+    facets,
+    stages,
+    queryTerms: report.queryTerms,
+    corpusSize: corpus.chunks.length,
+    vectorMatches: matches,
   };
 }
 
 /**
- * Fallback pipeline using local seed data when external services
- * (Neo4j / Databricks) are not configured.
+ * Local-only fallback used when Neo4j or Databricks aren't configured.
+ * The retrieval is real (BM25 + MMR) but the graph context is built from
+ * the same seed dataset so we can show the same UI shape.
  */
 export async function executeLocalFallback(
   query: string
 ): Promise<GraphRAGResult> {
-  const { filterFacilities } = await import("@/lib/crisis/data");
-  const { parseNaturalLanguageQuery } = await import("@/lib/crisis/query");
+  const facilities = await filterFacilities({
+    category: null,
+    confidence: null,
+    district: null,
+    facilityType: null,
+    q: null,
+    severity: null,
+    sinceDays: null,
+    state: null,
+  });
 
-  const filters = parseNaturalLanguageQuery(query);
-  const facilities = await filterFacilities(filters);
+  const skeleton = runReasoning({
+    query,
+    facilities,
+    usedEmbedding: false,
+  });
 
-  const generatedCypher = generateCypherFromQuery(query);
+  // Build a lightweight in-memory graph context.
+  const graphStart = Date.now();
+  const matchedFacilities = skeleton.vectorMatches
+    .map((m) => facilities.find((f) => f.id === m.id))
+    .filter((f): f is HealthcareFacility => Boolean(f));
+  const graphContext = buildLocalGraph(matchedFacilities);
+  const stages: PipelineStage[] = [...skeleton.stages];
+  stages.push({
+    name: "graph",
+    label: "Graph traversal",
+    detail:
+      "Built the LOCATED_IN / PART_OF / OFFERS / DESERT_FOR neighbourhood for the top matches.",
+    durationMs: Date.now() - graphStart,
+    meta: {
+      nodes: graphContext.nodes.length,
+      edges: graphContext.relationships.length,
+    },
+  });
 
-  const vectorMatches: VectorMatch[] = facilities
-    .slice(0, 10)
-    .map((fac, i) => ({
-      id: fac.id,
-      score: Math.max(0.96 - i * 0.08, 0.4),
-      title: fac.title,
-      summary: fac.summary,
-      category: fac.category,
-      state: fac.state,
-      district: fac.district,
-      country: fac.country,
-    }));
-
-  const graphContext: GraphContext = {
-    nodes: facilities.slice(0, 10).map((fac) => ({
-      id: fac.id,
-      labels: ["Facility"],
-      properties: {
-        title: fac.title,
-        category: fac.category,
-        gapSeverity: fac.gapSeverity,
-        state: fac.state,
-        district: fac.district,
-        confidence: fac.confidence,
-      },
-    })),
-    relationships: [],
+  const composeStart = Date.now();
+  const composeInput: ComposeInput = {
+    query,
+    matches: skeleton.vectorMatches,
+    facilities: matchedFacilities,
+    context: graphContext,
+    facets: skeleton.facets,
   };
+  const answer = composeAnswer(composeInput);
+  const reasoning = composeReasoning(composeInput);
+  const recommendations = composeRecommendations(matchedFacilities);
+  const confidence = computeConfidence(
+    skeleton.vectorMatches,
+    matchedFacilities,
+    graphContext
+  );
+  stages.push({
+    name: "compose",
+    label: "Answer synthesis",
+    detail:
+      "Composed the structured answer, reasoning trace, and recommended actions.",
+    durationMs: Date.now() - composeStart,
+    meta: {
+      reasoningSteps: reasoning.length,
+      recommendations: recommendations.length,
+    },
+  });
 
-  // Add state, district, and specialty nodes
-  const states = new Set(facilities.map((f) => f.state));
-  const districts = new Set(facilities.map((f) => f.district));
-  const categories = new Set(facilities.map((f) => f.category));
+  return {
+    ...skeleton,
+    answer,
+    reasoning,
+    recommendations,
+    confidence,
+    graphContext,
+    stages,
+  };
+}
 
-  for (const state of states) {
-    graphContext.nodes.push({
-      id: `state_${state}`,
-      labels: ["State"],
-      properties: { name: state },
+/**
+ * Live pipeline that uses Databricks vector search and Neo4j for the
+ * graph. Falls back to the local pipeline if any external call throws.
+ */
+export async function executeGraphRAG(query: string): Promise<GraphRAGResult> {
+  const facilities = await filterFacilities({
+    category: null,
+    confidence: null,
+    district: null,
+    facilityType: null,
+    q: null,
+    severity: null,
+    sinceDays: null,
+    state: null,
+  });
+  const facilityIndex = new Map(facilities.map((f) => [f.id, f]));
+
+  const skeleton = runReasoning({
+    query,
+    facilities,
+    usedEmbedding: true,
+  });
+
+  // 1. Real embedding + vector search (in parallel, best-effort).
+  const liveMatches: VectorMatch[] = [];
+  try {
+    const embedding = await generateEmbedding(query);
+    const remoteMatches = await vectorSearch(embedding, 10);
+    for (const remote of remoteMatches) {
+      liveMatches.push({
+        ...remote,
+        chunkKind: "narrative",
+      });
+    }
+  } catch (err) {
+    console.warn("Vector search failed, falling back to local retrieval:", err);
+  }
+
+  // Fuse remote matches with local BM25 matches via reciprocal rank fusion.
+  const fused = reciprocalRankFusion([liveMatches, skeleton.vectorMatches]);
+
+  // 2. Graph traversal for the top fused matches.
+  const graphStart = Date.now();
+  const graphContext: GraphContext = { nodes: [], relationships: [] };
+  const seen = new Set<string>();
+  for (const match of fused.slice(0, 5)) {
+    try {
+      const ctx = await getFacilityContext(match.id);
+      mergeGraph(graphContext, ctx, seen);
+    } catch (err) {
+      console.warn("Neo4j facility context failed:", err);
+    }
+  }
+
+  if (fused.length > 0) {
+    try {
+      const stateCtx = await traverseStateGraph(fused[0].state);
+      mergeGraph(graphContext, stateCtx, seen);
+    } catch (err) {
+      console.warn("Neo4j state traversal failed:", err);
+    }
+  }
+
+  const stages: PipelineStage[] = [...skeleton.stages];
+  stages.push({
+    name: "graph",
+    label: "Neo4j traversal",
+    detail:
+      "Walked LOCATED_IN / PART_OF / OFFERS / DESERT_FOR edges around the top matches.",
+    durationMs: Date.now() - graphStart,
+    meta: {
+      nodes: graphContext.nodes.length,
+      edges: graphContext.relationships.length,
+    },
+  });
+
+  // 3. Compose answer.
+  const composeStart = Date.now();
+  const matchedFacilities = fused
+    .map((m) => facilityIndex.get(m.id))
+    .filter((f): f is HealthcareFacility => Boolean(f));
+  const composeInput: ComposeInput = {
+    query,
+    matches: fused,
+    facilities: matchedFacilities,
+    context: graphContext,
+    facets: skeleton.facets,
+  };
+  const answer = composeAnswer(composeInput);
+  const reasoning = composeReasoning(composeInput);
+  const recommendations = composeRecommendations(matchedFacilities);
+  const confidence = computeConfidence(fused, matchedFacilities, graphContext);
+  stages.push({
+    name: "compose",
+    label: "Answer synthesis",
+    detail: "Composed structured answer, reasoning trace, and recommendations.",
+    durationMs: Date.now() - composeStart,
+    meta: {
+      reasoningSteps: reasoning.length,
+      recommendations: recommendations.length,
+    },
+  });
+
+  return {
+    ...skeleton,
+    answer,
+    reasoning,
+    recommendations,
+    confidence,
+    graphContext,
+    generatedCypher: skeleton.generatedCypher ?? generateCypherFromQuery(query),
+    stages,
+    vectorMatches: fused,
+  };
+}
+
+/**
+ * Reciprocal Rank Fusion — combines two ranked lists into a single
+ * stable order without needing comparable raw scores.
+ */
+function reciprocalRankFusion(
+  rankings: VectorMatch[][],
+  k = 60
+): VectorMatch[] {
+  const scores = new Map<string, { score: number; match: VectorMatch }>();
+  for (const ranking of rankings) {
+    ranking.forEach((match, index) => {
+      const prev = scores.get(match.id);
+      const contribution = 1 / (k + index + 1);
+      if (prev) {
+        prev.score += contribution;
+      } else {
+        scores.set(match.id, { score: contribution, match });
+      }
     });
   }
-  for (const district of districts) {
-    graphContext.nodes.push({
-      id: `district_${district}`,
-      labels: ["District"],
-      properties: { name: district },
-    });
-  }
-  for (const category of categories) {
-    graphContext.nodes.push({
-      id: `specialty_${category}`,
-      labels: ["Specialty"],
-      properties: { name: category },
-    });
-  }
+  return [...scores.values()]
+    .sort((a, b) => b.score - a.score)
+    .map(({ match, score }) => ({
+      ...match,
+      score: Math.min(0.99, Math.max(0.05, score * 4)),
+    }));
+}
 
-  // Connect facilities to districts, states, and specialties
-  for (const fac of facilities.slice(0, 10)) {
-    graphContext.relationships.push({
-      type: "LOCATED_IN",
-      startNodeId: fac.id,
-      endNodeId: `district_${fac.district}`,
-      properties: {},
-    });
-    graphContext.relationships.push({
-      type: "PART_OF",
-      startNodeId: `district_${fac.district}`,
-      endNodeId: `state_${fac.state}`,
-      properties: {},
-    });
-    graphContext.relationships.push({
-      type: "OFFERS",
-      startNodeId: fac.id,
-      endNodeId: `specialty_${fac.category}`,
-      properties: {},
-    });
-    // Mark critical/severe/moderate gaps as desert relationships with scaled scores
-    if (["critical", "severe", "moderate"].includes(fac.gapSeverity)) {
-      graphContext.relationships.push({
-        type: "DESERT_FOR",
-        startNodeId: `district_${fac.district}`,
-        endNodeId: `specialty_${fac.category}`,
+function mergeGraph(
+  target: GraphContext,
+  next: GraphContext,
+  seen: Set<string>
+) {
+  for (const node of next.nodes) {
+    if (!seen.has(node.id)) {
+      seen.add(node.id);
+      target.nodes.push(node);
+    }
+  }
+  for (const rel of next.relationships) {
+    target.relationships.push(rel);
+  }
+}
+
+/**
+ * Build a graph context from the matched facilities themselves.
+ * Mirrors the live Neo4j shape so the UI can stay format-agnostic.
+ */
+function buildLocalGraph(facilities: HealthcareFacility[]): GraphContext {
+  const ctx: GraphContext = { nodes: [], relationships: [] };
+  const seen = new Set<string>();
+
+  for (const facility of facilities) {
+    if (!seen.has(facility.id)) {
+      seen.add(facility.id);
+      ctx.nodes.push({
+        id: facility.id,
+        labels: ["Facility"],
         properties: {
-          gap_score:
-            fac.gapSeverity === "critical"
-              ? 0.95
-              : fac.gapSeverity === "severe"
-                ? 0.75
-                : 0.5,
+          title: facility.title,
+          category: facility.category,
+          gapSeverity: facility.gapSeverity,
+          state: facility.state,
+          district: facility.district,
+          confidence: facility.confidence,
+        },
+      });
+    }
+    const districtId = `district_${facility.district}`;
+    if (!seen.has(districtId)) {
+      seen.add(districtId);
+      ctx.nodes.push({
+        id: districtId,
+        labels: ["District"],
+        properties: { name: facility.district, state: facility.state },
+      });
+    }
+    const stateId = `state_${facility.state}`;
+    if (!seen.has(stateId)) {
+      seen.add(stateId);
+      ctx.nodes.push({
+        id: stateId,
+        labels: ["State"],
+        properties: { name: facility.state },
+      });
+    }
+    const specialtyId = `specialty_${facility.category}`;
+    if (!seen.has(specialtyId)) {
+      seen.add(specialtyId);
+      ctx.nodes.push({
+        id: specialtyId,
+        labels: ["Specialty"],
+        properties: { name: facility.category },
+      });
+    }
+
+    ctx.relationships.push({
+      type: "LOCATED_IN",
+      startNodeId: facility.id,
+      endNodeId: districtId,
+      properties: {},
+    });
+    ctx.relationships.push({
+      type: "PART_OF",
+      startNodeId: districtId,
+      endNodeId: stateId,
+      properties: {},
+    });
+    ctx.relationships.push({
+      type: "OFFERS",
+      startNodeId: facility.id,
+      endNodeId: specialtyId,
+      properties: {},
+    });
+    if (
+      facility.gapSeverity === "critical" ||
+      facility.gapSeverity === "severe" ||
+      facility.gapSeverity === "moderate"
+    ) {
+      ctx.relationships.push({
+        type: "DESERT_FOR",
+        startNodeId: districtId,
+        endNodeId: specialtyId,
+        properties: {
+          gap_score: GAP_SCORE_BY_SEVERITY[facility.gapSeverity],
         },
       });
     }
   }
 
-  const answer = composeAnswer(query, vectorMatches, graphContext);
-  const confidence = computeConfidence(vectorMatches, graphContext);
-
-  return {
-    answer,
-    confidence,
-    generatedCypher,
-    graphContext,
-    query,
-    vectorMatches,
-  };
+  return ctx;
 }

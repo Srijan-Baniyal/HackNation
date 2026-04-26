@@ -170,7 +170,7 @@ async function runSql(
 }
 
 async function seedDatabricksVectorSearch() {
-  const host = process.env.DATABRICKS_HOST?.replace(/\/$/, "");
+  const host = process.env.DATABRICKS_HOST?.replace(TRAILING_SLASH_RE, "");
   const token = process.env.DATABRICKS_TOKEN;
   const indexName = process.env.DATABRICKS_VS_INDEX;
 

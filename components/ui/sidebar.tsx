@@ -3,6 +3,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
 import { Slot } from "radix-ui";
+// biome-ignore lint/performance/noNamespaceImport: shadcn pattern keeps React namespace for mixed types/hooks.
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,15 +32,15 @@ const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
-type SidebarContextProps = {
-  state: "expanded" | "collapsed";
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  openMobile: boolean;
-  setOpenMobile: (open: boolean) => void;
+interface SidebarContextProps {
   isMobile: boolean;
+  open: boolean;
+  openMobile: boolean;
+  setOpen: (open: boolean) => void;
+  setOpenMobile: (open: boolean) => void;
+  state: "expanded" | "collapsed";
   toggleSidebar: () => void;
-};
+}
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
 
@@ -81,7 +82,7 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
+      // biome-ignore lint/suspicious/noDocumentCookie: intentionally persisting sidebar state for SSR hydration.
       document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`;
     },
     [setOpenProp, open]
@@ -91,7 +92,7 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(
     () =>
       isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open),
-    [isMobile, setOpen, setOpenMobile]
+    [isMobile, setOpen]
   );
 
   // Adds a keyboard shortcut to toggle the sidebar.
@@ -124,7 +125,7 @@ function SidebarProvider({
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, openMobile, toggleSidebar]
   );
 
   return (
@@ -173,6 +174,7 @@ function Sidebar({
           "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
           className
         )}
+        data-sidebar="sidebar"
         data-slot="sidebar"
         {...props}
       >
@@ -211,6 +213,7 @@ function Sidebar({
       className="group peer hidden text-sidebar-foreground md:block"
       data-collapsible={state === "collapsed" ? collapsible : ""}
       data-side={side}
+      data-sidebar="sidebar"
       data-slot="sidebar"
       data-state={state}
       data-variant={variant}

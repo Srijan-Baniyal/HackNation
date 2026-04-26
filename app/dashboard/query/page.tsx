@@ -84,7 +84,9 @@ export default function DashboardQueryPage({
           <Badge variant="secondary">Graph RAG</Badge>
           <Badge variant="outline">Neo4j + Databricks</Badge>
         </div>
-        <GraphRAGPanel />
+        <Suspense fallback={<Skeleton className="h-[640px] w-full" />}>
+          <GraphRAGPanel />
+        </Suspense>
       </section>
 
       <Separator />

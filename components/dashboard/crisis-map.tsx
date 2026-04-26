@@ -153,10 +153,10 @@ export function CrisisMap({
           severityColorMap[String(props.gapSeverity)] ?? "#8260ff";
 
         const html = `
-          <div style="font-family: monospace; font-size: 12px; max-width: 260px; line-height: 1.4;">
+          <div style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace; font-size: 12px; max-width: 260px; line-height: 1.45; color: #111827;">
             <strong style="font-size: 13px;">${props.title}</strong>
             <br/><span style="opacity: 0.7;">${props.district}, ${props.state}</span>
-            <hr style="border-color: rgba(255,255,255,0.15); margin: 6px 0;"/>
+            <hr style="border-color: #e5e7eb; margin: 6px 0;"/>
             <span>Specialty: <strong>${String(props.category).replace("-", " ")}</strong></span>
             <br/><span>Gap: <strong style="color: ${gapColor}">${props.gapSeverity}</strong></span>
             <br/><span>Beds: ${props.beds} · Specialists: ${props.specialists}</span>
@@ -164,7 +164,10 @@ export function CrisisMap({
           </div>
         `;
 
-        new maplibregl.Popup({ maxWidth: "280px" })
+        new maplibregl.Popup({
+          className: "crisis-map-popup",
+          maxWidth: "280px",
+        })
           .setLngLat(coordinates)
           .setHTML(html)
           .addTo(map);
@@ -199,6 +202,26 @@ export function CrisisMap({
 
   return (
     <div className="relative overflow-hidden border border-border/60 bg-muted/20">
+      <style global jsx>{`
+        .crisis-map-popup .maplibregl-popup-content {
+          background: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 10px;
+          box-shadow: 0 10px 28px rgba(2, 6, 23, 0.18);
+          color: hsl(var(--foreground));
+          padding: 12px;
+        }
+
+        .crisis-map-popup .maplibregl-popup-tip {
+          border-top-color: hsl(var(--background));
+        }
+
+        .crisis-map-popup .maplibregl-popup-close-button {
+          color: hsl(var(--muted-foreground));
+          font-size: 18px;
+          line-height: 1;
+        }
+      `}</style>
       <div className="h-[560px] w-full" ref={containerRef} />
       {/* Map legend */}
       <div className="absolute right-3 bottom-3 border border-border bg-background/90 p-3 backdrop-blur">

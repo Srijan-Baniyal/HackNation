@@ -278,88 +278,153 @@ export async function traverseStateGraph(state: string): Promise<GraphContext> {
   }
 }
 
+export interface CypherFacets {
+  category: string | null;
+  confidence: string | null;
+  district: string | null;
+  facilityType: string | null;
+  severity: string | null;
+  state: string | null;
+  /** Free-form keyword (e.g. "rural") that should hit summary text. */
+  textHint?: string | null;
+}
+
 /**
- * Generate a Cypher query from a natural language question
- * about healthcare deserts in India.
+ * Compose a Cypher query from already-parsed facets. The query is
+ * intentionally readable so the operator can audit what the agent ran.
+ *
+ * The result chains: Facility -[LOCATED_IN]-> District -[PART_OF]-> State
+ * and exposes desert + specialty edges for downstream reasoning.
+ */
+export function buildCypher(facets: CypherFacets): string {
+  const lines: string[] = [];
+  const params: string[] = [];
+
+  lines.push(
+    "MATCH (f:Facility)-[:LOCATED_IN]->(d:District)-[:PART_OF]->(s:State)"
+  );
+
+  if (facets.state) {
+    params.push(`s.name = "${escapeQuotes(facets.state)}"`);
+  }
+  if (facets.district) {
+    params.push(`d.name = "${escapeQuotes(facets.district)}"`);
+  }
+  if (facets.category) {
+    params.push(`f.category = "${escapeQuotes(facets.category)}"`);
+  }
+  if (facets.severity) {
+    params.push(`f.gapSeverity = "${escapeQuotes(facets.severity)}"`);
+  } else {
+    params.push('f.gapSeverity IN ["critical", "severe", "moderate"]');
+  }
+  if (facets.confidence) {
+    params.push(`f.confidence = "${escapeQuotes(facets.confidence)}"`);
+  }
+  if (facets.facilityType) {
+    params.push(`f.facilityType = "${escapeQuotes(facets.facilityType)}"`);
+  }
+  if (facets.textHint) {
+    params.push(
+      `(toLower(f.summary) CONTAINS "${escapeQuotes(facets.textHint.toLowerCase())}" OR toLower(f.title) CONTAINS "${escapeQuotes(facets.textHint.toLowerCase())}")`
+    );
+  }
+
+  if (params.length > 0) {
+    lines.push(`WHERE ${params.join("\n  AND ")}`);
+  }
+
+  lines.push("OPTIONAL MATCH (f)-[:OFFERS]->(sp:Specialty)");
+  lines.push("OPTIONAL MATCH (d)-[desert:DESERT_FOR]->(dsp:Specialty)");
+  lines.push("WITH f, d, s, sp, desert, dsp, CASE f.gapSeverity");
+  lines.push("  WHEN 'critical' THEN 4");
+  lines.push("  WHEN 'severe'   THEN 3");
+  lines.push("  WHEN 'moderate' THEN 2");
+  lines.push("  ELSE 1 END AS severityRank");
+  lines.push("RETURN f, d, s, sp, desert, dsp, severityRank");
+  lines.push("ORDER BY severityRank DESC, f.affectedPopulation DESC");
+  lines.push("LIMIT 25");
+
+  return lines.join("\n");
+}
+
+const QUOTE_RE = /"/g;
+const escapeQuotes = (value: string) => value.replace(QUOTE_RE, '\\"');
+
+/**
+ * Light-weight detector kept for callers that only have raw text.
+ * Pulls out a state and a category and delegates to {@link buildCypher}.
  */
 export function generateCypherFromQuery(query: string): string {
   const q = query.toLowerCase();
 
-  // Detect specialty
-  const specialties: Record<string, string> = {
-    oncology: "oncology",
-    cancer: "oncology",
-    dialysis: "dialysis",
-    kidney: "dialysis",
-    renal: "dialysis",
-    trauma: "emergency-trauma",
-    emergency: "emergency-trauma",
-    cardiology: "cardiology",
-    cardiac: "cardiology",
-    heart: "cardiology",
-    maternity: "maternity",
-    maternal: "maternity",
-    pediatric: "pediatrics",
-    child: "pediatrics",
-    "mental health": "mental-health",
-    psychiatry: "mental-health",
-    orthopedic: "orthopedics",
-    fracture: "orthopedics",
-    neurology: "neurology",
-    brain: "neurology",
-    surgery: "surgery",
-    radiology: "radiology",
-    imaging: "radiology",
-    neonatal: "neonatal",
-    icu: "intensive-care",
-  };
-
-  let detectedSpecialty: string | null = null;
-  for (const [keyword, specialty] of Object.entries(specialties)) {
-    if (q.includes(keyword)) {
-      detectedSpecialty = specialty;
+  const specialties: [string, string][] = [
+    ["cancer", "oncology"],
+    ["oncology", "oncology"],
+    ["chemo", "oncology"],
+    ["dialysis", "dialysis"],
+    ["kidney", "dialysis"],
+    ["renal", "dialysis"],
+    ["trauma", "emergency-trauma"],
+    ["emergency", "emergency-trauma"],
+    ["accident", "emergency-trauma"],
+    ["cardio", "cardiology"],
+    ["heart", "cardiology"],
+    ["maternity", "maternity"],
+    ["maternal", "maternity"],
+    ["delivery", "maternity"],
+    ["pediatric", "pediatrics"],
+    ["child", "pediatrics"],
+    ["neonatal", "pediatrics"],
+    ["mental", "mental-health"],
+    ["psychiatr", "mental-health"],
+    ["orthopedic", "orthopedics"],
+    ["fracture", "orthopedics"],
+  ];
+  let category: string | null = null;
+  for (const [needle, value] of specialties) {
+    if (q.includes(needle)) {
+      category = value;
       break;
     }
   }
 
-  // Detect state
-  const statePatterns = [
-    "rajasthan",
-    "bihar",
+  const stateNames = [
+    "andhra pradesh",
+    "arunachal pradesh",
     "assam",
-    "kerala",
-    "karnataka",
-    "maharashtra",
-    "tamil nadu",
-    "uttar pradesh",
-    "madhya pradesh",
-    "gujarat",
+    "bihar",
     "chhattisgarh",
+    "goa",
+    "gujarat",
+    "haryana",
+    "himachal pradesh",
     "jharkhand",
+    "karnataka",
+    "kerala",
+    "ladakh",
+    "madhya pradesh",
+    "maharashtra",
+    "manipur",
+    "meghalaya",
+    "mizoram",
+    "nagaland",
     "odisha",
     "punjab",
-    "himachal pradesh",
-    "manipur",
-    "telangana",
-    "west bengal",
-    "ladakh",
-    "uttarakhand",
-    "goa",
+    "rajasthan",
     "sikkim",
-    "mizoram",
+    "tamil nadu",
+    "telangana",
     "tripura",
-    "meghalaya",
-    "arunachal pradesh",
-    "nagaland",
-    "haryana",
+    "uttarakhand",
+    "uttar pradesh",
+    "west bengal",
     "delhi",
-    "jammu",
-    "kashmir",
   ];
-  let detectedState: string | null = null;
-  for (const state of statePatterns) {
-    if (q.includes(state)) {
-      detectedState = state
+  let state: string | null = null;
+  for (const candidate of stateNames) {
+    if (q.includes(candidate)) {
+      state = candidate
         .split(" ")
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
@@ -367,48 +432,31 @@ export function generateCypherFromQuery(query: string): string {
     }
   }
 
-  // Detect severity
-  const wantsCritical = q.includes("critical") || q.includes("severe");
-  const wantsDesert = q.includes("desert") || q.includes("gap");
-
-  // Build Cypher
-  if (detectedSpecialty && detectedState) {
-    return `MATCH (f:Facility)-[:LOCATED_IN]->(d:District)-[:PART_OF]->(s:State {name: "${detectedState}"})
-WHERE f.category = "${detectedSpecialty}"${wantsCritical ? '\nAND f.gapSeverity IN ["critical", "severe"]' : ""}
-OPTIONAL MATCH (f)-[:OFFERS]->(sp:Specialty)
-RETURN f, d, s, sp
-ORDER BY f.gapSeverity DESC, f.affectedPopulation DESC`;
+  let severity: string | null = null;
+  if (q.includes("critical") || q.includes("no access")) {
+    severity = "critical";
+  } else if (q.includes("severe")) {
+    severity = "severe";
+  } else if (q.includes("moderate")) {
+    severity = "moderate";
   }
 
-  if (wantsDesert && detectedState) {
-    return `MATCH (d:District)-[r:DESERT_FOR]->(sp:Specialty)
-WHERE d.state = "${detectedState}"
-RETURN d, sp, r.gap_score AS gapScore
-ORDER BY r.gap_score DESC`;
+  let confidence: string | null = null;
+  if (q.includes("verified") || q.includes("government")) {
+    confidence = "govt-verified";
+  } else if (q.includes("survey") || q.includes("nfhs")) {
+    confidence = "survey-reported";
   }
 
-  if (detectedSpecialty) {
-    return `MATCH (f:Facility)-[:OFFERS]->(sp:Specialty {name: "${detectedSpecialty}"})
-MATCH (f)-[:LOCATED_IN]->(d:District)-[:PART_OF]->(s:State)
-${wantsCritical ? 'WHERE f.gapSeverity IN ["critical", "severe"]\n' : ""}RETURN f, d, s, sp
-ORDER BY f.gapSeverity DESC, f.affectedPopulation DESC
-LIMIT 10`;
-  }
-
-  if (detectedState) {
-    return `MATCH (f:Facility)-[:LOCATED_IN]->(d:District)-[:PART_OF]->(s:State {name: "${detectedState}"})
-OPTIONAL MATCH (f)-[:OFFERS]->(sp:Specialty)
-RETURN f, d, s, sp
-ORDER BY f.gapSeverity DESC
-LIMIT 10`;
-  }
-
-  // Generic query
-  return `MATCH (f:Facility)-[:LOCATED_IN]->(d:District)-[:PART_OF]->(s:State)
-${wantsCritical ? 'WHERE f.gapSeverity IN ["critical", "severe"]\n' : ""}OPTIONAL MATCH (f)-[:OFFERS]->(sp:Specialty)
-RETURN f, d, s, sp
-ORDER BY f.gapSeverity DESC, f.affectedPopulation DESC
-LIMIT 10`;
+  return buildCypher({
+    state,
+    district: null,
+    category,
+    severity,
+    confidence,
+    facilityType: null,
+    textHint: null,
+  });
 }
 
 /**

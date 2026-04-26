@@ -4,6 +4,9 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/Provider/ThemeProvider";
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://servinganation.org";
+
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
@@ -22,9 +25,57 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Serving a Nation | Healthcare Desert Intelligence",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Serving a Nation | Healthcare Desert Intelligence",
+    template: "%s | Serving a Nation",
+  },
   description:
     "Identify healthcare specialty deserts across India. Graph RAG powered by Neo4j + Databricks with facility mapping, desert detection, and evidence-grade reporting.",
+  applicationName: "Serving a Nation",
+  keywords: [
+    "healthcare desert",
+    "healthcare intelligence",
+    "Graph RAG",
+    "Neo4j",
+    "Databricks",
+    "public health analytics India",
+    "specialty gap mapping",
+    "healthcare infrastructure",
+  ],
+  authors: [{ name: "Serving a Nation" }],
+  creator: "Serving a Nation",
+  publisher: "Serving a Nation",
+  category: "Healthcare intelligence",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_IN",
+    url: "/",
+    siteName: "Serving a Nation",
+    title: "Serving a Nation | Healthcare Desert Intelligence",
+    description:
+      "Identify healthcare specialty deserts across India with Graph RAG intelligence, facility mapping, and evidence-grade reporting.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Serving a Nation | Healthcare Desert Intelligence",
+    description:
+      "Graph RAG intelligence for India healthcare specialty deserts, facility mapping, and auditable evidence exports.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.classList.add(t)}else{document.documentElement.classList.add("dark")}}catch(e){document.documentElement.classList.add("dark")}})()`;
