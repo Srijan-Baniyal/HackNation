@@ -47,6 +47,13 @@ export function SiteNavigation() {
       </Link>
 
       <div className="hidden items-center gap-2 md:flex">
+        <Link
+          className="px-3 py-2 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+          href="/about"
+        >
+          About
+        </Link>
+
         <NavigationMenu>
           <NavigationMenuList>
             <NavigationMenuItem>

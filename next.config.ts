@@ -33,6 +33,14 @@ const nextConfig: NextConfig = {
         source: "/.well-known/agent-skills/index.json",
         destination: "/api/discovery/agent-skills",
       },
+      {
+        source: "/.well-known/oauth-authorization-server",
+        destination: "/api/discovery/oauth-authorization-server",
+      },
+      {
+        source: "/.well-known/oauth-protected-resource",
+        destination: "/api/discovery/oauth-protected-resource",
+      },
     ];
   },
 };

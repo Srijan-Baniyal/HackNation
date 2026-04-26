@@ -6,7 +6,6 @@ import {
   ListMagnifyingGlassIcon,
   MapPinIcon,
 } from "@phosphor-icons/react/dist/ssr";
-import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -37,15 +36,6 @@ const navItems = [
   },
   { href: "/dashboard/map", label: "Desert map", icon: MapPinIcon },
 ] as const;
-
-export const metadata: Metadata = {
-  title: "Dashboard",
-  description:
-    "Operational dashboard for healthcare desert detection, Graph RAG query workflows, and India-wide facility mapping.",
-  alternates: {
-    canonical: "/dashboard",
-  },
-};
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (

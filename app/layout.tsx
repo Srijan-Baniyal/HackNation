@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
+import { SiteNavigation } from "@/components/site-navigation";
 import { WebMCP } from "@/components/web-mcp";
 import { getSiteUrl } from "@/lib/site-url";
 import { cn } from "@/lib/utils";
@@ -116,6 +118,36 @@ export default function RootLayout({
       <body className="flex min-h-full flex-col">
         <ThemeProvider>{children}</ThemeProvider>
         <WebMCP />
+        <footer className="border-border border-t bg-card px-4 py-4 sm:px-8 lg:px-10">
+          <nav
+            aria-label="Site footer"
+            className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3"
+          >
+            <Link
+              className="font-display text-foreground text-sm leading-none transition-colors hover:text-primary"
+              href="/"
+            >
+              Serving a Nation
+            </Link>
+            <ul className="flex flex-wrap items-center gap-x-5 gap-y-1 text-muted-foreground text-xs">
+              {[
+                { href: "/about", label: "About" },
+                { href: "/dashboard", label: "Dashboard" },
+                { href: "/dashboard/map", label: "Desert map" },
+                { href: "/dashboard/query", label: "Query" },
+              ].map(({ href, label }) => (
+                <li key={href}>
+                  <Link
+                    className="transition-colors hover:text-foreground"
+                    href={href}
+                  >
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </footer>
       </body>
     </html>
   );

@@ -1,11 +1,11 @@
 import {
-  ArrowRight,
-  Broadcast,
-  Database,
-  FileText,
-  MapPinArea,
-  ShieldCheck,
-  Siren,
+  ArrowRightIcon,
+  BroadcastIcon,
+  DatabaseIcon,
+  FileTextIcon,
+  MapPinAreaIcon,
+  ShieldCheckIcon,
+  SirenIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import { cacheLife } from "next/cache";
 import Link from "next/link";
@@ -38,7 +38,7 @@ async function OperationsBrief() {
         <div className="flex items-center justify-between gap-3">
           <Badge variant="secondary">Live RSC snapshot</Badge>
           <span className="grid size-10 place-items-center border border-border bg-muted text-primary">
-            <Broadcast aria-hidden="true" size={21} />
+            <BroadcastIcon aria-hidden="true" size={21} />
           </span>
         </div>
         <CardTitle className="font-display text-3xl leading-tight">
@@ -144,12 +144,12 @@ export default function Home() {
               <div className="flex flex-wrap gap-3">
                 <Button asChild className="h-11 px-5 sm:h-12">
                   <Link href="/dashboard">
-                    Enter command center <ArrowRight aria-hidden={true} />
+                    Enter command center <ArrowRightIcon aria-hidden={true} />
                   </Link>
                 </Button>
                 <Button asChild className="h-11 px-5 sm:h-12" variant="outline">
                   <Link href="/dashboard/map">
-                    <MapPinArea aria-hidden={true} /> View desert map
+                    <MapPinAreaIcon aria-hidden={true} /> View desert map
                   </Link>
                 </Button>
               </div>
@@ -163,7 +163,7 @@ export default function Home() {
               ].map(([label, detail]) => (
                 <div className="flex items-center gap-3" key={label}>
                   <span className="grid size-9 place-items-center border border-border bg-muted text-primary">
-                    <Siren aria-hidden={true} size={18} />
+                    <SirenIcon aria-hidden={true} size={18} />
                   </span>
                   <span>
                     <span className="block font-medium text-sm">{label}</span>
@@ -212,13 +212,13 @@ export default function Home() {
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="grid size-11 place-items-center border border-border bg-muted text-primary sm:size-12">
-                <Database aria-hidden={true} size={22} />
+                <DatabaseIcon aria-hidden={true} size={22} />
               </div>
               <div className="grid size-11 place-items-center border border-border bg-muted text-primary sm:size-12">
-                <FileText aria-hidden={true} size={22} />
+                <FileTextIcon aria-hidden={true} size={22} />
               </div>
               <div className="grid size-11 place-items-center border border-border bg-muted text-primary sm:size-12">
-                <ShieldCheck aria-hidden={true} size={22} />
+                <ShieldCheckIcon aria-hidden={true} size={22} />
               </div>
             </div>
           </div>
