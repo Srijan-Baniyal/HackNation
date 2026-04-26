@@ -1,7 +1,5 @@
 import { getSiteUrl } from "@/lib/site-url";
 
-export const runtime = "edge";
-
 export function GET() {
   const siteUrl = getSiteUrl();
 
