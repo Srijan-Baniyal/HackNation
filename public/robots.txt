@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /dashboard/integrations
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+
+Sitemap: https://hacking-nation.vercel.app/sitemap.xml
+Host: https://hacking-nation.vercel.app
