@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+import "./scrollbar.css";
 import { SiteNavigation } from "@/components/site-navigation";
 import { WebMCP } from "@/components/web-mcp";
 import { getSiteUrl } from "@/lib/site-url";
