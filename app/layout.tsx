@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
+import { getSiteUrl } from "@/lib/site-url";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/Provider/ThemeProvider";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://servinganation.org";
+const siteUrl = getSiteUrl();
+const ogImageUrl = `${siteUrl}/api/og`;
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -53,14 +54,14 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_IN",
-    url: "/",
+    url: siteUrl,
     siteName: "Serving a Nation",
     title: "Serving a Nation | Healthcare Desert Intelligence",
     description:
       "Identify healthcare specialty deserts across India with Graph RAG intelligence, facility mapping, and evidence-grade reporting.",
     images: [
       {
-        url: "/api/og",
+        url: ogImageUrl,
         width: 1200,
         height: 630,
         alt: "Serving a Nation healthcare intelligence preview",
@@ -72,7 +73,7 @@ export const metadata: Metadata = {
     title: "Serving a Nation | Healthcare Desert Intelligence",
     description:
       "Graph RAG intelligence for India healthcare specialty deserts, facility mapping, and auditable evidence exports.",
-    images: ["/api/og"],
+    images: [ogImageUrl],
   },
   robots: {
     index: true,

@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
+import { getSiteUrl } from "@/lib/site-url";
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://servinganation.org";
+const siteUrl = getSiteUrl();
 
 const routes = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
