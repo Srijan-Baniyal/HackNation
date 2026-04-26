@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, JetBrains_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/Provider/ThemeProvider";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -21,10 +22,12 @@ const bodyFont = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "San Studio | High-Performance Digital Experiences",
+  title: "Serving a Nation | Healthcare Desert Intelligence",
   description:
-    "A fast, design-forward website built with React Server Components and modern Next.js best practices.",
+    "Identify healthcare specialty deserts across India. Graph RAG powered by Neo4j + Databricks with facility mapping, desert detection, and evidence-grade reporting.",
 };
+
+const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark"){document.documentElement.classList.add(t)}else{document.documentElement.classList.add("dark")}}catch(e){document.documentElement.classList.add("dark")}})()`;
 
 export default function RootLayout({
   children,
@@ -42,8 +45,15 @@ export default function RootLayout({
         jetbrainsMono.variable
       )}
       lang="en"
+      suppressHydrationWarning
     >
-      <body className="flex min-h-full flex-col">{children}</body>
+      <head>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: FOUC prevention — constant string, not user input */}
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="flex min-h-full flex-col">
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
     </html>
   );
 }

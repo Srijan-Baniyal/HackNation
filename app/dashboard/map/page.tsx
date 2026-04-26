@@ -1,7 +1,5 @@
-import { CrisisMap } from "@/app/dashboard/_components/crisis-map";
-import { filterIncidents } from "@/app/lib/crisis/data";
-import { incidentsToGeoJSON } from "@/app/lib/crisis/geojson";
-import { parseFiltersFromSearchParams } from "@/app/lib/crisis/query";
+import { Suspense } from "react";
+import { CrisisMap } from "@/components/dashboard/crisis-map";
 import {
   Card,
   CardContent,
@@ -9,27 +7,43 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { filterFacilities } from "@/lib/crisis/data";
+import { facilitiesToGeoJSON } from "@/lib/crisis/geojson";
+import { parseFiltersFromSearchParams } from "@/lib/crisis/query";
 
-export default async function DashboardMapPage({
+async function MapContent({
   searchParams,
 }: {
-  searchParams: Record<string, string | string[] | undefined>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const filters = parseFiltersFromSearchParams(searchParams);
-  const incidents = await filterIncidents(filters);
-  const geojson = incidentsToGeoJSON(incidents);
+  const resolvedSearchParams = await searchParams;
+  const filters = parseFiltersFromSearchParams(resolvedSearchParams);
+  const facilities = await filterFacilities(filters);
+  const geojson = facilitiesToGeoJSON(facilities);
 
+  return <CrisisMap data={geojson} />;
+}
+
+export default function DashboardMapPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Crisis map</CardTitle>
+        <CardTitle>Healthcare desert map</CardTitle>
         <CardDescription>
-          Heatmap view powered by MapLibre. Use Natural Language Query to shape
-          the dataset and share the same view with the NGO API.
+          India-focused heatmap showing healthcare facility gaps and specialty
+          deserts. Zoom in to see individual facilities color-coded by gap
+          severity. Click points for details.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <CrisisMap data={geojson} />
+        <Suspense fallback={<Skeleton className="h-[500px] w-full" />}>
+          <MapContent searchParams={searchParams} />
+        </Suspense>
       </CardContent>
     </Card>
   );

@@ -1,90 +1,160 @@
 import {
-  Globe,
-  ListMagnifyingGlass,
-  MapPin,
-  Receipt,
-  ShieldCheck,
+  ArrowSquareOutIcon,
+  BracketsCurlyIcon,
+  GlobeHemisphereEastIcon,
+  HouseLineIcon,
+  ListMagnifyingGlassIcon,
+  MapPinIcon,
 } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 
 const navItems = [
-  { href: "/dashboard", label: "Overview", icon: Globe },
+  { href: "/dashboard", label: "Overview", icon: GlobeHemisphereEastIcon },
   {
     href: "/dashboard/query",
     label: "Natural language",
-    icon: ListMagnifyingGlass,
+    icon: ListMagnifyingGlassIcon,
   },
-  { href: "/dashboard/map", label: "Crisis map", icon: MapPin },
-  { href: "/dashboard/reports", label: "Trust reports", icon: Receipt },
-  { href: "/dashboard/api", label: "NGO API", icon: ShieldCheck },
+  { href: "/dashboard/map", label: "Desert map", icon: MapPinIcon },
 ] as const;
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-full flex-1 bg-background text-foreground">
-      <aside className="hidden w-72 shrink-0 border-border/60 border-r bg-card/60 p-5 backdrop-blur-sm lg:block">
-        <div className="flex items-center justify-between">
-          <Link className="font-display text-xl leading-none" href="/dashboard">
-            Serving a Nation
+    <SidebarProvider className="min-h-full bg-background text-foreground">
+      <Sidebar className="border-border bg-sidebar text-sidebar-foreground">
+        <SidebarHeader className="p-5">
+          <Link className="grid gap-2" href="/dashboard">
+            <span className="flex size-11 items-center justify-center bg-sidebar text-sidebar-primary">
+              <GlobeHemisphereEastIcon aria-hidden="true" size={23} />
+            </span>
+            <span className="font-display text-2xl leading-none">
+              Serving a Nation
+            </span>
+            <span className="text-sidebar-foreground/60 text-xs uppercase">
+              Health intelligence
+            </span>
           </Link>
-          <span className="rounded-full border border-border/60 bg-muted px-2.5 py-1 text-muted-foreground text-xs">
-            Beta
-          </span>
-        </div>
-        <nav className="mt-6 flex flex-col gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                className={cn(
-                  "group flex items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm transition-colors hover:bg-muted/50",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/50"
-                )}
-                href={item.href}
-                key={item.href}
-              >
-                <span className="grid size-8 place-items-center rounded-lg bg-muted/60 text-muted-foreground transition-colors group-hover:bg-muted">
-                  <Icon aria-hidden="true" size={18} />
-                </span>
-                <span className="font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="mt-8 rounded-2xl border border-border/60 bg-background p-4">
-          <p className="text-muted-foreground text-xs uppercase tracking-[0.2em]">
-            Data mode
-          </p>
-          <p className="mt-2 text-sm leading-relaxed">
-            Seeded incidents. Switch to API later without changing the UI.
-          </p>
-        </div>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-10 border-border/60 border-b bg-background/85 backdrop-blur-sm">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 sm:px-10 lg:px-12">
-            <div className="flex flex-col">
-              <p className="text-muted-foreground text-xs uppercase tracking-[0.22em]">
-                Crisis intelligence
-              </p>
-              <p className="font-display text-2xl leading-tight">
-                Operational dashboard
-              </p>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Workspaces</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu aria-label="Dashboard navigation">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        asChild
+                        className="h-10"
+                        tooltip={item.label}
+                      >
+                        <Link href={item.href}>
+                          <Icon
+                            aria-hidden="true"
+                            className="text-sidebar-primary"
+                            size={19}
+                          />
+                          <span>{item.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup className="mt-5">
+            <SidebarGroupLabel>Server surfaces</SidebarGroupLabel>
+            <SidebarGroupContent className="grid gap-2 px-2">
+              <div className="bg-sidebar p-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <BracketsCurlyIcon
+                    aria-hidden="true"
+                    className="text-sidebar-primary"
+                    size={17}
+                  />
+                  RSC pages
+                </div>
+                <p className="mt-2 text-sidebar-foreground/65 text-xs leading-relaxed">
+                  Data composition stays server-side; only map and query input
+                  hydrate.
+                </p>
+              </div>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+          <div className="bg-sidebar p-3">
+            <p className="font-medium text-sidebar-primary text-xs uppercase">
+              Data mode
+            </p>
+            <p className="mt-2 text-sidebar-foreground/70 text-sm leading-relaxed">
+              Healthcare facility pipeline with shared server filters for UI,
+              partner records, and desert exports.
+            </p>
+          </div>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset className="min-w-0 bg-background">
+        <header className="sticky top-0 z-10 border-border border-b bg-background/92 backdrop-blur">
+          <div className="flex w-full items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10">
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarTrigger className="-ml-2 md:hidden" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">Operational</Badge>
+                  <Badge variant="muted">RSC-first</Badge>
+                </div>
+                <h1 className="mt-2 truncate font-display text-2xl leading-tight sm:text-3xl">
+                  Healthcare intelligence dashboard
+                </h1>
+              </div>
             </div>
-            <Link
-              className="rounded-full border border-border/60 bg-card px-4 py-2 font-medium text-sm hover:bg-muted/40"
-              href="/"
-            >
-              Home
-            </Link>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Button
+                asChild
+                className="hidden sm:inline-flex"
+                variant="outline"
+              >
+                <Link href="/">
+                  <HouseLineIcon aria-hidden="true" /> Home
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link href="/dashboard/integrations">
+                  <ArrowSquareOutIcon aria-hidden="true" /> Integrations
+                </Link>
+              </Button>
+            </div>
           </div>
         </header>
-        <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-8 sm:px-10 lg:px-12">
+        <div className="flex w-full flex-1 flex-col gap-6 px-5 py-6 sm:px-8 lg:px-10">
           {children}
-        </main>
-      </div>
-    </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
